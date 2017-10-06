@@ -1,3 +1,24 @@
+### Stick breaking VAE Model ###
+### No Rights reserved. No guarrantee is provided ###
+### Reference: https://arxiv.org/pdf/1605.06197.pdf
+### Part of Masters Practikum ###
+### Deep Learning for Real World ###
+### Faculty of Informatics ###
+### Technical University of Munich ###
+
+
+###The stick breaking dirichlet process is adapted from Edward's example###
+### link: https://github.com/blei-lab/edward/blob/master/examples/pp_dirichlet_process.py ###
+### Initially I planned to implement the kumaraswamy process with stick breking, but it is a bit complex for ###
+### multilayer neural network. The original author of  SBVAE implemented kumaraswamy process with ###
+### stick breaking using a Single Layer network which makes the computation of 'a' and 'b' easy. ###
+### this code is much faster and accurrate than normal VAE with gaussian distribution (rather than ###
+### dirichlet process with stick breaking prior) but this code suffers from Vanishing Gradient problem ###
+### Adam Optimizer is used for Machine Learning, other optimizer are not tested yet. ###
+
+### This code is written with the help from stackoverflow, the original author's theano implementation ###
+### and Jan Hendrik Metzen's personal blog. ###
+
 import numpy as np
 import tensorflow as tf
 from xavier import xavier_init
@@ -23,9 +44,10 @@ class SBVAE_Model(object):
         # little known kumaraswamy samples
     def _get_kumaraswamy_sample(self, batch_size, latent_size, weights1, weights2):
         uniform_samples= tf.random_uniform(shape=(batch_size, latent_size), minval=0.01, maxval=0.99, dtype=tf.float32)
-        a= tf.nn.softplus(tf.tensordot(self.X, weights1['h1'],1))
-        b= tf.nn.softplus(tf.tensordot(self.X, tf.transpose(weights2['out_mean']),1))
-        ks=(1-(uniform_samples**(1/b)))**(1/a)
+        self.a= tf.nn.softplus(tf.tensordot(self.X, weights1['out_mean'],1))
+        self.b= tf.nn.softplus(tf.tensordot(self.X, tf.transpose(weights2['out_mean']),1))
+        #ks=(1-(uniform_samples**(1/self.b)))**(1/self.a)
+        ks=tf.pow((1.-tf.pow(uniform_samples, (1./self.b))),(1./self.a))
         return ks
         
         
@@ -61,20 +83,19 @@ class SBVAE_Model(object):
         # for SB VAE draw samples from stick breaking process with kumaraswamy samples
         #self.kumaraswamy= self._get_kumaraswamy_sample(self.batch_size, n_z, network_weights["encoder"], network_weights["generative"])
         #kumaraswamy is not stable now, beta distribution is similar to it, so we will use it in the meantime
-        
-        self.kumaraswamy= self.dirichlet_process(1.0, n_z, self.z_mean)
+        #self.K= self._get_kumaraswamy_sample(self.batch_size, n_z, network_weights["encoder"], network_weights["generative"])
         # now break the stick n_z times to get GEM distribution
-        stick_segment= tf.Variable(np.zeros((self.batch_size,)), dtype=tf.float32, name="stick_segment")
-        remaining_segment=tf.Variable(np.ones((self.batch_size,)), dtype=tf.float32, name="remaining_segment")
+        #stick_segment= tf.Variable(np.zeros((self.batch_size,)), dtype=tf.float32, name="stick_segment")
+        #remaining_segment=tf.Variable(np.ones((self.batch_size,)), dtype=tf.float32, name="remaining_segment")
         
-        for m in range(n_z):
-            stick_segment=self.kumaraswamy[:,m]*remaining_segment
-            remaining_segment*=(1-self.kumaraswamy[:,m])
+        #for m in range(n_z):
+          #  stick_segment=self.kumaraswamy[:,m]*remaining_segment
+            #remaining_segment*=(1-self.kumaraswamy[:,m])
         
         
-        print(self.z_mean.shape)
+        #print(self.z_mean.shape)
         #now comes the latent variable
-        self.Z= self.kumaraswamy
+        self.Z= self.dirichlet_process(1.0, n_z, self.z_mean)
         
         #use generator to determine mean of Bernoulli distribution of reconstructed inputs
         self.x_reconstruction_mean= self._generative_network(network_weights["generative"], network_biases["generative"])
@@ -130,6 +151,9 @@ class SBVAE_Model(object):
             'out_mean': tf.Variable(tf.zeros([n_input], dtype=tf.float32)),
             'out_log_sigma': tf.Variable(tf.zeros([n_input], dtype= tf.float32))}
         return all_biases
+    def get_K(self, X):
+        return self.sess.run((self.K, self.a, self.b), feed_dict={self.X:X})
+        
     def fit_data(self,X):
         #train data based on mini batches
         opt, cost= self.sess.run((self.optimizer, self.cost), feed_dict={self.X:X})

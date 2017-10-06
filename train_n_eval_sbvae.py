@@ -1,3 +1,5 @@
+### training script for Stick Breaking VAE ###
+
 import numpy as np
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
@@ -39,6 +41,8 @@ def train(network_arch, learning_rate=0.001, batch_size=100, training_epochs=10)
             batch_data,_=mnist.train.next_batch(batch_size)
             #fit training data
             cost= vae.fit_data(batch_data)
+            #K, a, b= vae.get_K(batch_data)
+            #print(K.shape)
             avg_cost+=cost/n_samples*batch_size
         #display log per 5 epoch
         if epoch % 5==0:
